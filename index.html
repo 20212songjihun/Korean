@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="ko" class="antialiased">
+<head>
+    <meta charset="UTF-8">
+    <!-- 아이패드 및 모바일 앱 뷰포트 최적화 (노치/상단바 영역 대응) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- iOS / iPadOS 홈 화면 추가 시 전체화면 네이티브 앱처럼 동작하게 하는 메타 태그 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="글자수 세기">
+    <meta name="theme-color" content="#f8fafc" id="themeColorMeta">
+    
+    <title>글자수 세기 · 깔끔한 텍스트 에디터</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter, Noto Sans KR, Noto Serif KR, JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind 다크모드 및 폰트 설정 -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Inter"', '"Noto Sans KR"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        serif: ['"Noto Serif KR"', 'Georgia', 'serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* 아이패드 iOS Safe Area(상단 상태바/하단 홈 인디케이터) 여백 처리 */
+        body {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* 스크롤바 깔끔하게 커스텀 */
+        textarea::-webkit-scrollbar,
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        textarea::-webkit-scrollbar-track,
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        textarea::-webkit-scrollbar-thumb,
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(148, 163, 184, 0.35);
+            border-radius: 9999px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover,
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(148, 163, 184, 0.6);
+        }
+
+        /* 숫자 변동 시 레이아웃 흔들림 방지 */
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 부드러운 토스트 애니메이션 */
+        @keyframes slideUpFade {
+            from {
+                opacity: 0;
+                transform: translate(-50%, 16px) scale(0.96);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0) scale(1);
+            }
+        }
+        .toast-enter {
+            animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 min-h-[100dvh] flex flex-col">
+
+    <!-- 상단 내비게이션 바 (글래스모피즘) -->
+    <header class="sticky top-0 z-30 backdrop-blur-md bg-white/80 dark:bg-slate-900/80 border-b border-slate-200/80 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
+            <!-- 좌측 로고 및 자동저장 상태 -->
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm shadow-blue-600/20">
+                    <!-- 텍스트 문서 아이콘 SVG -->
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">글자수 세기</h1>
+                        <span id="saveStatus" class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 transition-opacity">
+                            자동 저장됨
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 우측 에디터 스타일 및 테마 컨트롤러 -->
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- 서체 변경 버튼 (고딕 / 명조 / 고정폭) -->
+                <div class="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+                    <button type="button" onclick="setFontFamily('sans')" id="font-sans" class="font-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition">
+                        고딕
+                    </button>
+                    <button type="button" onclick="setFontFamily('serif')" id="font-serif" class="font-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
+                        명조
+                    </button>
+                    <button type="button" onclick="setFontFamily('mono')" id="font-mono" class="font-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">
+                        코드
+                    </button>
+                </div>
+
+                <!-- 글자 크기 조절 (- / +) -->
+                <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+                    <button type="button" onclick="changeFontSize(-1)" title="글자 작게" class="w-8 h-7 flex items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition text-xs font-bold">
+                        A-
+                    </button>
+                    <span id="fontSizeLabel" class="text-xs font-medium px-1.5 text-slate-500 dark:text-slate-400 tabular-nums">17</span>
+                    <button type="button" onclick="changeFontSize(1)" title="글자 크게" class="w-8 h-7 flex items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition text-xs font-bold">
+                        A+
+                    </button>
+                </div>
+
+                <!-- TXT 파일 다운로드 버튼 -->
+                <button type="button" onclick="downloadTxt()" title="TXT 파일로 저장" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition border border-slate-200/60 dark:border-slate-700/60">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                </button>
+
+                <!-- 다크 모드 전환 버튼 -->
+                <button type="button" onclick="toggleDarkMode()" title="다크 모드 전환" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition border border-slate-200/60 dark:border-slate-700/60">
+                    <!-- 해 아이콘 (다크모드일 때 표시) -->
+                    <svg id="sunIcon" class="w-4 h-4 hidden dark:block text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                    </svg>
+                    <!-- 달 아이콘 (라이트모드일 때 표시) -->
+                    <svg id="moonIcon" class="w-4 h-4 block dark:hidden text-slate-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 워크스페이스 (아이패드 가로/세로 모두 최적화된 반응형 그리드) -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+        
+        <!-- 왼쪽: 텍스트 입력 에디터 영역 (8칸) -->
+        <section class="lg:col-span-8 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 overflow-hidden min-h-[380px] sm:min-h-[520px] lg:min-h-[calc(100dvh-7.5rem)]">
+            
+            <!-- 에디터 상단 퀵 액션 바 -->
+            <div class="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/90 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <!-- 전체 복사 버튼 -->
+                    <button type="button" onclick="copyText()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white shadow-sm transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        전체 복사
+                    </button>
+
+                    <!-- 공백 정리 (연속 띄어쓰기 1칸으로) -->
+                    <button type="button" onclick="cleanExtraSpaces()" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 transition">
+                        중복 공백 정리
+                    </button>
+
+                    <!-- 빈 줄 정리 -->
+                    <button type="button" onclick="cleanEmptyLines()" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 transition">
+                        빈 줄 제거
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <!-- 되돌리기 (Undo) -->
+                    <button type="button" id="undoBtn" onclick="undoText()" disabled title="이전 상태로 되돌리기" class="px-2.5 py-1.5 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none border border-slate-200/80 dark:border-slate-700 transition">
+                        되돌리기
+                    </button>
+
+                    <!-- 전체 삭제 버튼 -->
+                    <button type="button" onclick="openClearModal()" class="px-2.5 py-1.5 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition">
+                        지우기
+                    </button>
+                </div>
+            </div>
+
+            <!-- 실제 텍스트 입력창 -->
+            <div class="relative flex-1 flex flex-col">
+                <textarea
+                    id="editor"
+                    placeholder="여기에 글을 작성하거나 붙여넣어 주세요...&#10;&#10;• 입력한 내용은 아이패드 브라우저에 자동으로 안전하게 저장됩니다.&#10;• 자소서, 보고서, 대본 분량 체크에 최적화되어 있습니다."
+                    spellcheck="false"
+                    style="font-size: 17px; line-height: 1.75;"
+                    class="flex-1 w-full p-5 sm:p-7 bg-transparent resize-none focus:outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 font-sans tracking-normal"
+                ></textarea>
+            </div>
+
+            <!-- 에디터 하단 미니 상태바 -->
+            <div class="px-5 py-2.5 bg-slate-50/60 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <div class="flex items-center gap-3">
+                    <span>읽기 <strong id="bottomReadTime" class="font-semibold text-slate-700 dark:text-slate-300">0초</strong></span>
+                    <span class="text-slate-300 dark:text-slate-700">|</span>
+                    <span>발표 <strong id="bottomSpeakTime" class="font-semibold text-slate-700 dark:text-slate-300">0초</strong></span>
+                </div>
+                <div class="sm:hidden flex items-center gap-1">
+                    <button type="button" onclick="cycleFontFamilyMobile()" class="px-2 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-[11px] font-medium">
+                        서체 변경
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 오른쪽: 실시간 통계 & 목표 설정 대시보드 (4칸) -->
+        <aside class="lg:col-span-4 flex flex-col gap-4 sm:gap-5">
+            
+            <!-- 1. 핵심 글자수 히어로 카드 (공백 포함 / 공백 제외) -->
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
+                <!-- 공백 포함 -->
+                <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between relative overflow-hidden">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">공백 포함</span>
+                        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-1">
+                        <span id="countWithSpaces" class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white tabular-nums">0</span>
+                        <span class="text-xs sm:text-sm font-medium text-slate-400">자</span>
+                    </div>
+                </div>
+
+                <!-- 공백 제외 -->
+                <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between relative overflow-hidden">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">공백 제외</span>
+                        <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-1">
+                        <span id="countWithoutSpaces" class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white tabular-nums">0</span>
+                        <span class="text-xs sm:text-sm font-medium text-slate-400">자</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 목표 글자수 트래커 (자소서 / 공모전용) -->
+            <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">목표 분량 체크</h2>
+                    </div>
+                    <!-- 기준 선택 드롭다운 -->
+                    <select id="goalBasis" onchange="updateStats()" class="text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg px-2 py-1 border border-slate-200/60 dark:border-slate-700 focus:outline-none">
+                        <option value="withSpaces">공백 포함</option>
+                        <option value="withoutSpaces">공백 제외</option>
+                        <option value="eucKr">EUC-KR 바이트</option>
+                    </select>
+                </div>
+
+                <!-- 목표치 입력 및 빠른 프리셋 -->
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="relative flex-1">
+                        <input
+                            type="number"
+                            id="goalInput"
+                            placeholder="목표치 (예: 1000)"
+                            min="0"
+                            oninput="saveGoalAndUpdate()"
+                            class="w-full px-3 py-2 text-sm font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 tabular-nums"
+                        >
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button type="button" onclick="setGoalPreset(500)" class="px-2.5 py-2 text-xs font-medium rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">500</button>
+                        <button type="button" onclick="setGoalPreset(1000)" class="px-2.5 py-2 text-xs font-medium rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">1000</button>
+                        <button type="button" onclick="setGoalPreset(1500)" class="px-2.5 py-2 text-xs font-medium rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">1500</button>
+                    </div>
+                </div>
+
+                <!-- 진행률 바 -->
+                <div class="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2">
+                    <div id="goalProgressBar" class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs">
+                    <span id="goalPercentText" class="font-semibold text-slate-500 dark:text-slate-400 tabular-nums">목표를 설정해보세요</span>
+                    <span id="goalRemainText" class="font-medium text-slate-500 dark:text-slate-400 tabular-nums"></span>
+                </div>
+            </div>
+
+            <!-- 3. 바이트(Byte) 및 세부 텍스트 통계 -->
+            <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 space-y-4">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">상세 분석</h2>
+                
+                <!-- 바이트 비교 (한국 채용사이트/공모전 표준 EUC-KR vs UTF-8) -->
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400">EUC-KR (한글 2B)</div>
+                        <div class="mt-1 flex items-baseline gap-1">
+                            <span id="countEucKr" class="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">0</span>
+                            <span class="text-xs text-slate-400">byte</span>
+                        </div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400">UTF-8 (한글 3B)</div>
+                        <div class="mt-1 flex items-baseline gap-1">
+                            <span id="countUtf8" class="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">0</span>
+                            <span class="text-xs text-slate-400">byte</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 단어 / 문장 / 문단 수 -->
+                <div class="grid grid-cols-3 gap-2 pt-1">
+                    <div class="text-center p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
+                        <div class="text-[11px] text-slate-500 dark:text-slate-400">단어</div>
+                        <div id="countWords" class="mt-0.5 text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">0</div>
+                    </div>
+                    <div class="text-center p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
+                        <div class="text-[11px] text-slate-500 dark:text-slate-400">문장</div>
+                        <div id="countSentences" class="mt-0.5 text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">0</div>
+                    </div>
+                    <div class="text-center p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40">
+                        <div class="text-[11px] text-slate-500 dark:text-slate-400">문단</div>
+                        <div id="countParagraphs" class="mt-0.5 text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 자주 쓴 단어 TOP 5 (반복 어휘 체크용) -->
+            <div class="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800">
+                <div class="flex items-center justify-between mb-2.5">
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">자주 사용한 단어</h2>
+                    <span class="text-[11px] text-slate-400">2글자 이상</span>
+                </div>
+                <div id="topWordsContainer" class="flex flex-wrap gap-1.5 min-h-[28px] items-center">
+                    <span class="text-xs text-slate-400 dark:text-slate-500">글을 입력하면 반복 단어가 표시됩니다.</span>
+                </div>
+            </div>
+
+        </aside>
+    </main>
+
+    <!-- 전체 삭제 확인 커스텀 모달 (alert/confirm 미사용) -->
+    <div id="clearModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 transform transition-all">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">작성한 내용을 모두 지울까요?</h3>
+            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                지운 후에도 상단의 <span class="font-semibold text-slate-700 dark:text-slate-300">'되돌리기'</span> 버튼을 누르면 바로 복구할 수 있습니다.
+            </p>
+            <div class="mt-5 flex items-center justify-end gap-2">
+                <button type="button" onclick="closeClearModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    취소
+                </button>
+                <button type="button" onclick="confirmClearText()" class="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition">
+                    모두 지우기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 하단 토스트 알림 메시지 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden items-center gap-2 px-4 py-2.5 rounded-full bg-slate-900/95 dark:bg-slate-100/95 text-white dark:text-slate-900 text-xs sm:text-sm font-medium shadow-lg backdrop-blur-md">
+        <span id="toastIcon" class="text-emerald-400 dark:text-emerald-600">✓</span>
+        <span id="toastMessage">복사되었습니다.</span>
+    </div>
+
+    <script>
+        /**
+         * 모던 글자수 세기 & 텍스트 에디터 애플리케이션 로직
+         * - localStorage 기반 자동 저장 및 상태 복원
+         * - EUC-KR / UTF-8 바이트 정밀 계산
+         * - 실행 취소(Undo) 히스토리 관리
+         */
+
+        // DOM 요소 참조
+        const editor = document.getElementById('editor');
+        const saveStatus = document.getElementById('saveStatus');
+        const undoBtn = document.getElementById('undoBtn');
+        
+        // 상태 변수
+        const STORAGE_KEY_TEXT = 'ipad_char_counter_text_v1';
+        const STORAGE_KEY_PREFS = 'ipad_char_counter_prefs_v1';
+        
+        let undoStack = [];
+        let currentPrefs = {
+            darkMode: false,
+            fontFamily: 'sans',
+            fontSize: 17,
+            goal: '',
+            goalBasis: 'withSpaces'
+        };
+
+        // 초기화 실행
+        window.addEventListener('DOMContentLoaded', () => {
+            loadPreferences();
+            loadSavedText();
+            updateStats();
+        });
+
+        /**
+         * 사용자 환경설정(테마, 폰트, 목표 글자수 등) 불러오기
+         */
+        function loadPreferences() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY_PREFS);
+                if (saved) {
+                    currentPrefs = { ...currentPrefs, ...JSON.parse(saved) };
+                } else {
+                    // 시스템 다크모드 감지
+                    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        currentPrefs.darkMode = true;
+                    }
+                }
+            } catch (e) {
+                console.error('설정 로드 오류:', e);
+            }
+
+            applyTheme();
+            setFontFamily(currentPrefs.fontFamily, false);
+            applyFontSize();
+
+            if (currentPrefs.goal) {
+                document.getElementById('goalInput').value = currentPrefs.goal;
+            }
+            if (currentPrefs.goalBasis) {
+                document.getElementById('goalBasis').value = currentPrefs.goalBasis;
+            }
+        }
+
+        /**
+         * 환경설정 저장
+         */
+        function savePreferences() {
+            try {
+                localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(currentPrefs));
+            } catch (e) {
+                console.error('설정 저장 오류:', e);
+            }
+        }
+
+        /**
+         * 저장된 텍스트 불러오기
+         */
+        function loadSavedText() {
+            try {
+                const savedText = localStorage.getItem(STORAGE_KEY_TEXT);
+                if (savedText !== null) {
+                    editor.value = savedText;
+                }
+            } catch (e) {
+                console.error('텍스트 로드 오류:', e);
+            }
+        }
+
+        /**
+         * 에디터 입력 이벤트 리스너
+         */
+        let saveTimeout;
+        editor.addEventListener('input', () => {
+            updateStats();
+            
+            // 저장 상태 UI 표시
+            saveStatus.textContent = '저장 중...';
+            saveStatus.classList.remove('opacity-100');
+            saveStatus.classList.add('opacity-70');
+
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                try {
+                    localStorage.setItem(STORAGE_KEY_TEXT, editor.value);
+                    saveStatus.textContent = '자동 저장됨';
+                    saveStatus.classList.remove('opacity-70');
+                    saveStatus.classList.add('opacity-100');
+                } catch (e) {
+                    saveStatus.textContent = '저장 공간 부족';
+                }
+            }, 300);
+        });
+
+        /**
+         * 되돌리기(Undo) 스택에 현재 상태 기록
+         */
+        function pushUndoState(text) {
+            if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== text) {
+                undoStack.push(text);
+                if (undoStack.length > 20) undoStack.shift(); // 최대 20단계 유지
+                undoBtn.disabled = false;
+            }
+        }
+
+        /**
+         * 이전 상태로 되돌리기
+         */
+        function undoText() {
+            if (undoStack.length === 0) return;
+            const prevText = undoStack.pop();
+            editor.value = prevText;
+            localStorage.setItem(STORAGE_KEY_TEXT, editor.value);
+            updateStats();
+            if (undoStack.length === 0) {
+                undoBtn.disabled = true;
+            }
+            showToast('이전 내용으로 되돌렸습니다.');
+        }
+
+        /**
+         * 핵심 통계 계산 및 화면 업데이트
+         */
+        function updateStats() {
+            const text = editor.value;
+
+            // 1. 글자수 계산 (Array.from으로 이모지/특수 유니코드도 정확히 1자로 카운트)
+            const withSpaces = Array.from(text).length;
+            const withoutSpaces = Array.from(text.replace(/\s/g, '')).length;
+
+            // 2. 바이트 계산
+            // EUC-KR 기준: ASCII(0~127)는 1바이트, 한글/한자/전각특수문자는 2바이트
+            let eucKrBytes = 0;
+            for (const char of text) {
+                const code = char.codePointAt(0);
+                if (code <= 0x007f) {
+                    eucKrBytes += 1;
+                } else {
+                    eucKrBytes += 2;
+                }
+            }
+            // UTF-8 기준: 내장 TextEncoder 사용 (한글 3바이트, 이모지 4바이트)
+            const utf8Bytes = new TextEncoder().encode(text).length;
+
+            // 3. 단어, 문장, 문단 수
+            const trimmed = text.trim();
+            const words = trimmed === '' ? 0 : trimmed.split(/\s+/).length;
+            
+            // 마침표, 물음표, 느낌표 기준 문장 분리
+            const sentences = trimmed === '' 
+                ? 0 
+                : trimmed.split(/[.!?。！？]+(?:\s|$)/).filter(s => s.trim().length > 0).length;
+            
+            // 줄바꿈 기준 문단 분리
+            const paragraphs = trimmed === '' 
+                ? 0 
+                : trimmed.split(/\n+/).filter(p => p.trim().length > 0).length;
+
+            // 4. 예상 읽기 및 발표 시간 계산 (한국어 평균 읽기: 분당 500자, 발표: 분당 320자)
+            const readSeconds = Math.ceil((withoutSpaces / 500) * 60);
+            const speakSeconds = Math.ceil((withoutSpaces / 320) * 60);
+
+            // DOM 숫자 반영
+            document.getElementById('countWithSpaces').textContent = withSpaces.toLocaleString();
+            document.getElementById('countWithoutSpaces').textContent = withoutSpaces.toLocaleString();
+            document.getElementById('countEucKr').textContent = eucKrBytes.toLocaleString();
+            document.getElementById('countUtf8').textContent = utf8Bytes.toLocaleString();
+            document.getElementById('countWords').textContent = words.toLocaleString();
+            document.getElementById('countSentences').textContent = sentences.toLocaleString();
+            document.getElementById('countParagraphs').textContent = paragraphs.toLocaleString();
+
+            document.getElementById('bottomReadTime').textContent = formatDuration(readSeconds);
+            document.getElementById('bottomSpeakTime').textContent = formatDuration(speakSeconds);
+
+            // 5. 목표 글자수 진행률 업데이트
+            updateGoalProgress({ withSpaces, withoutSpaces, eucKr: eucKrBytes });
+
+            // 6. 자주 쓴 단어 TOP 5 업데이트
+            updateTopWords(text);
+        }
+
+        /**
+         * 초 단위 시간을 'X분 Y초' 형태로 포맷팅
+         */
+        function formatDuration(totalSeconds) {
+            if (totalSeconds <= 0) return '0초';
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            if (mins === 0) return `${secs}초`;
+            if (secs === 0) return `${mins}분`;
+            return `${mins}분 ${secs}초`;
+        }
+
+        /**
+         * 목표 분량 설정 및 진행률 게이지 업데이트
+         */
+        function saveGoalAndUpdate() {
+            const val = document.getElementById('goalInput').value;
+            currentPrefs.goal = val;
+            currentPrefs.goalBasis = document.getElementById('goalBasis').value;
+            savePreferences();
+            updateStats();
+        }
+
+        function setGoalPreset(amount) {
+            document.getElementById('goalInput').value = amount;
+            saveGoalAndUpdate();
+        }
+
+        function updateGoalProgress(counts) {
+            const goalVal = parseInt(document.getElementById('goalInput').value, 10);
+            const basis = document.getElementById('goalBasis').value;
+            currentPrefs.goalBasis = basis;
+
+            const progressBar = document.getElementById('goalProgressBar');
+            const percentText = document.getElementById('goalPercentText');
+            const remainText = document.getElementById('goalRemainText');
+
+            if (!goalVal || goalVal <= 0) {
+                progressBar.style.width = '0%';
+                progressBar.className = 'h-full bg-blue-600 rounded-full transition-all duration-300';
+                percentText.textContent = '목표를 설정해보세요';
+                percentText.className = 'font-semibold text-slate-500 dark:text-slate-400 tabular-nums';
+                remainText.textContent = '';
+                return;
+            }
+
+            const current = counts[basis] || 0;
+            const ratio = (current / goalVal) * 100;
+            const clampedWidth = Math.min(ratio, 100);
+            const diff = goalVal - current;
+            const unit = basis === 'eucKr' ? 'byte' : '자';
+
+            progressBar.style.width = `${clampedWidth}%`;
+
+            if (diff < 0) {
+                // 목표 초과 시 빨간색 경고 표시
+                progressBar.className = 'h-full bg-rose-500 rounded-full transition-all duration-300';
+                percentText.textContent = `${Math.round(ratio)}% (초과)`;
+                percentText.className = 'font-bold text-rose-600 dark:text-rose-400 tabular-nums';
+                remainText.textContent = `${Math.abs(diff).toLocaleString()}${unit} 초과됨`;
+            } else if (diff === 0) {
+                // 목표 딱 달성
+                progressBar.className = 'h-full bg-emerald-500 rounded-full transition-all duration-300';
+                percentText.textContent = '100% 달성!';
+                percentText.className = 'font-bold text-emerald-600 dark:text-emerald-400 tabular-nums';
+                remainText.textContent = '목표 분량 일치';
+            } else {
+                // 진행 중
+                progressBar.className = 'h-full bg-blue-600 rounded-full transition-all duration-300';
+                percentText.textContent = `${Math.round(ratio)}% 달성`;
+                percentText.className = 'font-semibold text-blue-600 dark:text-blue-400 tabular-nums';
+                remainText.textContent = `${diff.toLocaleString()}${unit} 남음`;
+            }
+        }
+
+        /**
+         * 자주 사용한 단어 TOP 5 추출 (2글자 이상 한글/영문/숫자)
+         */
+        function updateTopWords(text) {
+            const container = document.getElementById('topWordsContainer');
+            const matches = text.match(/[가-힣a-zA-Z0-9]{2,}/g);
+
+            if (!matches || matches.length === 0) {
+                container.innerHTML = '<span class="text-xs text-slate-400 dark:text-slate-500">글을 입력하면 반복 단어가 표시됩니다.</span>';
+                return;
+            }
+
+            const freq = {};
+            for (const word of matches) {
+                const lower = word.toLowerCase();
+                freq[lower] = (freq[lower] || 0) + 1;
+            }
+
+            const sorted = Object.entries(freq)
+                .filter(([, count]) => count >= 2)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+
+            if (sorted.length === 0) {
+                container.innerHTML = '<span class="text-xs text-slate-400 dark:text-slate-500">2회 이상 반복된 단어가 아직 없습니다.</span>';
+                return;
+            }
+
+            container.innerHTML = sorted.map(([word, count]) => `
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/60">
+                    <span>${escapeHtml(word)}</span>
+                    <span class="text-[11px] font-bold text-blue-600 dark:text-blue-400 tabular-nums">${count}</span>
+                </span>
+            `).join('');
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        /**
+         * 텍스트 유틸리티: 클립보드 전체 복사 (document.execCommand 사용)
+         */
+        function copyText() {
+            if (!editor.value) {
+                showToast('복사할 내용이 없습니다.', false);
+                return;
+            }
+            editor.select();
+            editor.setSelectionRange(0, 999999);
+            try {
+                document.execCommand('copy');
+                // 선택 해제하여 깔끔한 상태 유지
+                window.getSelection().removeAllRanges();
+                showToast('클립보드에 전체 복사되었습니다.');
+            } catch (err) {
+                showToast('복사에 실패했습니다.', false);
+            }
+        }
+
+        /**
+         * 텍스트 유틸리티: 중복 공백 정리 (연속된 스페이스를 1칸으로 압축)
+         */
+        function cleanExtraSpaces() {
+            if (!editor.value) return;
+            pushUndoState(editor.value);
+            editor.value = editor.value.replace(/[^\S\r\n]{2,}/g, ' ');
+            editor.dispatchEvent(new Event('input'));
+            showToast('중복된 띄어쓰기를 정리했습니다.');
+        }
+
+        /**
+         * 텍스트 유틸리티: 불필요한 빈 줄 제거
+         */
+        function cleanEmptyLines() {
+            if (!editor.value) return;
+            pushUndoState(editor.value);
+            editor.value = editor.value
+                .split('\n')
+                .filter(line => line.trim() !== '')
+                .join('\n');
+            editor.dispatchEvent(new Event('input'));
+            showToast('빈 줄을 모두 제거했습니다.');
+        }
+
+        /**
+         * 전체 지우기 모달 제어
+         */
+        function openClearModal() {
+            if (!editor.value) {
+                showToast('이미 비어 있습니다.', false);
+                return;
+            }
+            const modal = document.getElementById('clearModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeClearModal() {
+            const modal = document.getElementById('clearModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function confirmClearText() {
+            pushUndoState(editor.value);
+            editor.value = '';
+            editor.dispatchEvent(new Event('input'));
+            closeClearModal();
+            showToast('내용을 모두 지웠습니다.');
+        }
+
+        /**
+         * TXT 파일로 다운로드
+         */
+        function downloadTxt() {
+            if (!editor.value.trim()) {
+                showToast('저장할 내용이 없습니다.', false);
+                return;
+            }
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+            const blob = new Blob([editor.value], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `글자수세기_${dateStr}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('TXT 파일로 다운로드되었습니다.');
+        }
+
+        /**
+         * 서체(Font Family) 및 글자 크기 조절
+         */
+        function setFontFamily(type, save = true) {
+            currentPrefs.fontFamily = type;
+            editor.classList.remove('font-sans', 'font-serif', 'font-mono');
+            editor.classList.add(`font-${type}`);
+
+            document.querySelectorAll('.font-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'dark:bg-slate-700', 'text-slate-900', 'dark:text-white', 'shadow-sm');
+                btn.classList.add('text-slate-500', 'dark:text-slate-400');
+            });
+
+            const activeBtn = document.getElementById(`font-${type}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-500', 'dark:text-slate-400');
+                activeBtn.classList.add('bg-white', 'dark:bg-slate-700', 'text-slate-900', 'dark:text-white', 'shadow-sm');
+            }
+
+            if (save) savePreferences();
+        }
+
+        function cycleFontFamilyMobile() {
+            const order = ['sans', 'serif', 'mono'];
+            const labels = { sans: '고딕체', serif: '명조체', mono: '고정폭 서체' };
+            const next = order[(order.indexOf(currentPrefs.fontFamily) + 1) % order.length];
+            setFontFamily(next);
+            showToast(`${labels[next]}로 변경되었습니다.`);
+        }
+
+        function changeFontSize(delta) {
+            const nextSize = Math.min(26, Math.max(13, currentPrefs.fontSize + delta));
+            currentPrefs.fontSize = nextSize;
+            applyFontSize();
+            savePreferences();
+        }
+
+        function applyFontSize() {
+            editor.style.fontSize = `${currentPrefs.fontSize}px`;
+            document.getElementById('fontSizeLabel').textContent = currentPrefs.fontSize;
+        }
+
+        /**
+         * 다크 모드 토글 및 iOS 상태바 색상 동기화
+         */
+        function toggleDarkMode() {
+            currentPrefs.darkMode = !currentPrefs.darkMode;
+            applyTheme();
+            savePreferences();
+        }
+
+        function applyTheme() {
+            const html = document.documentElement;
+            const themeMeta = document.getElementById('themeColorMeta');
+            if (currentPrefs.darkMode) {
+                html.classList.add('dark');
+                themeMeta.setAttribute('content', '#020617');
+            } else {
+                html.classList.remove('dark');
+                themeMeta.setAttribute('content', '#f8fafc');
+            }
+        }
+
+        /**
+         * 하단 토스트 알림 표시
+         */
+        let toastTimer;
+        function showToast(message, isSuccess = true) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.textContent = message;
+            toastIcon.textContent = isSuccess ? '✓' : '!';
+            toastIcon.className = isSuccess 
+                ? 'text-emerald-400 dark:text-emerald-600 font-bold' 
+                : 'text-amber-400 dark:text-amber-600 font-bold';
+
+            toast.classList.remove('hidden', 'toast-enter');
+            toast.classList.add('flex');
+            void toast.offsetWidth; // 애니메이션 리트리거
+            toast.classList.add('toast-enter');
+
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('flex');
+            }, 2200);
+        }
+    </script>
+</body>
+</html>
